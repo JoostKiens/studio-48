@@ -1,25 +1,38 @@
-import logo from './logo.svg';
+import React, { useEffect } from "react"
 import './App.css';
+import { streamAtom } from './client-state';
+import { useAtom } from 'jotai'
+import { Canvas } from "react-three-fiber"
+import { Frequency } from './visualizations/Frequency';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+		<div style={{ height: "100vh" }}>
+			<MicrophoneAsStream>
+				<Canvas
+					style={{ backgroundColor: "black" }}
+					camera={{ fov: 75, position: [0, 0, 2] }}
+				>
+					<Frequency />
+					<ambientLight />
+				</Canvas>
+			</MicrophoneAsStream>
+		</div>
+	)
 }
 
-export default App;
+function MicrophoneAsStream({ children }) {
+  const [stream, setStream] = useAtom(streamAtom)
+
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ audio: true, video: false })
+      .then(setStream)
+  }, [setStream])
+
+	// Can we use a hook and suspense here?
+  return !!stream ? children: null
+}
+
+
+export default App
