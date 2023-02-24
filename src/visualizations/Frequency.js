@@ -1,62 +1,102 @@
-import React, { useRef,  useMemo } from "react"
-import { streamAtom } from "../client-state"
+import React, { useRef, useMemo, forwardRef } from "react"
 import { useAtomValue } from "jotai"
-import { useFrame, useThree } from "react-three-fiber"
-import times from 'lodash/times'
+import { useFrame } from "react-three-fiber"
+import { motion } from 'framer-motion-3d'
+import { useMotionValue } from "framer-motion"
+
+import random from "canvas-sketch-util/random"
+import { Vector3 } from "three"
+
+import { streamAtom } from "../client-state"
+import { mapRange } from '../utils/mapRange'
+import { colorPallettes } from '../settings/colors'
+
+// TODO - lowpass filter
+
+const MAX_SCALE = 4
+const MIN_SCALE = 0.2
+const CENTER_VECTOR = new Vector3(0, 0, 0)
+
+const COLORS = colorPallettes[0]
 
 export const Frequency = () => {
 	const stream = useAtomValue(streamAtom)
-	const { analyser, dataArray } = useSetup({ stream })
-	const { size: {width, height }} = useThree()
-
+	const { analyser, dataArray } = useFrequencySetup({ stream })
 	const dotsRef = useRef([])
+	random.setSeed('check')
 
-	const dots = useMemo(() => times(dataArray.length, () => ({
-			// Add initial scale?
-			position: [Math.random(), Math.random(), 0]
-		}))
-	, [dataArray])
-
-
-	useFrame(({ clock }) => {
+	useFrame(() => {
 		if (!dataArray.length) return
 		if (!dotsRef.current?.length) return
 
 		analyser.getByteFrequencyData(dataArray)
 
-		 const time = clock.getElapsedTime()
-
 		dotsRef.current.forEach((dot, index) => {
-			// Add ease over this?
-			const scale = mapRange(dataArray[index] / 255, 0, 1, 0, 5) + 1
+			const scale = mapRange(dataArray[index] / 255, 0, 1, MIN_SCALE, MAX_SCALE)
 			dot.scale.x = scale
 			dot.scale.y = scale
 		})
 	})
 
-	console.log({ dotsRef, dataArray, dots })
-
 	return (
 		<>
-			<group>
-				{[...dataArray].map((_, index) => (
-					<mesh
-						position={dots[index].position}
-						key={index}
-						ref={(el) => (dotsRef.current[index] = el)}
-					>
-						<circleGeometry args={[0.02, 32]} />
-						<lineBasicMaterial color="yellow" />
-					</mesh>
-				))}
-			</group>
+			{[...dataArray].map((_, index) => (
+				<Dot index={index} ref={(el) => (dotsRef.current[index] = el)} key={index} />
+			))}
 		</>
 	)
 }
 
-const useSetup = ({
+const Dot = forwardRef(({ index }, ref) => {
+	const positionX = useMotionValue(random.range(-1, 1))
+	const positionY = useMotionValue(random.range(-1, 1))
+
+	const velocityX = useMotionValue(random.range(-0.005, 0.005))
+	const velocityY = useMotionValue(random.range(-0.005, 0.005))
+	const color = random.pick(COLORS)
+	const positionVector = new Vector3(positionX.get(), positionY.get(), 0)
+
+	useFrame(() => {
+		const currentVelocityX = velocityX.get()
+		const currentVelocityY = velocityY.get()
+		const currentPositionX = positionX.get()
+		const currentPositionY = positionY.get()
+
+		const noiseX =
+			random.noise3D(currentPositionX, currentPositionY, 0) * 1
+
+		const newPositionX = currentPositionX + currentVelocityX * (1 + noiseX)
+		const newPositionY = currentPositionY + currentVelocityY * (1 + noiseX)
+
+		positionVector.set(newPositionX, newPositionY, 0)
+		const collides = positionVector.distanceTo(CENTER_VECTOR) > 2.5
+
+
+		velocityX.set(currentVelocityX * (collides ? -1 : 1))
+		velocityY.set(currentVelocityY * (collides ? -1 : 1))
+
+		positionX.set(newPositionX)
+		positionY.set(newPositionY)
+	})
+
+	return (
+		<group>
+			<motion.mesh
+				x={positionX}
+				y={positionY}
+				z={0}
+				ref={ref}
+			>
+				<circleGeometry args={[0.02, 32]} />
+				<lineBasicMaterial color={color} />
+			</motion.mesh>
+		</group>
+	)
+})
+
+const useFrequencySetup = ({
 	stream,
-	fftSize = 64,
+	fftSize = 256,
 	smoothingTimeConstant = 0.9,
 	minDecibels = -100,
 	maxDecibels = -10,
@@ -76,14 +116,4 @@ const useSetup = ({
 	source.connect(analyser)
 
 	return { audioContext, source, analyser, dataArray }
-}
-
-const mapRange = (
-	n,
-	start1,
-	stop1,
-	start2,
-	stop2,
-) => {
-	return ((n - start1) / (stop1 - start1)) * (stop2 - start2) + start2
 }
