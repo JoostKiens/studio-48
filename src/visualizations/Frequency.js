@@ -5,6 +5,7 @@ import { motion } from 'framer-motion-3d'
 import { useMotionValue } from "framer-motion"
 
 import random from "canvas-sketch-util/random"
+import times from 'lodash/times'
 import { Vector3 } from "three"
 
 import { streamAtom } from "../client-state"
@@ -16,7 +17,8 @@ import { colorPallettes } from '../settings/colors'
 const MAX_SCALE = 4
 const MIN_SCALE = 0.2
 const CENTER_VECTOR = new Vector3(0, 0, 0)
-
+const DOTS_COUNT = 1000
+const DOTS_SCALE_POWER = 3
 const COLORS = colorPallettes[0]
 
 export const Frequency = () => {
@@ -32,7 +34,14 @@ export const Frequency = () => {
 		analyser.getByteFrequencyData(dataArray)
 
 		dotsRef.current.forEach((dot, index) => {
-			const scale = mapRange(dataArray[index] / 255, 0, 1, MIN_SCALE, MAX_SCALE)
+			const scale = mapRange(
+				Math.pow(dataArray[index % 32] / 255, DOTS_SCALE_POWER),
+				0,
+				1,
+				MIN_SCALE,
+				MAX_SCALE
+			)
+
 			dot.scale.x = scale
 			dot.scale.y = scale
 		})
@@ -40,8 +49,12 @@ export const Frequency = () => {
 
 	return (
 		<>
-			{[...dataArray].map((_, index) => (
-				<Dot index={index} ref={(el) => (dotsRef.current[index] = el)} key={index} />
+			{times(DOTS_COUNT).map((_, index) => (
+				<Dot
+					index={index}
+					ref={(el) => (dotsRef.current[index] = el)}
+					key={index}
+				/>
 			))}
 		</>
 	)
@@ -69,7 +82,7 @@ const Dot = forwardRef(({ index }, ref) => {
 		const newPositionY = currentPositionY + currentVelocityY * (1 + noiseX)
 
 		positionVector.set(newPositionX, newPositionY, 0)
-		const collides = positionVector.distanceTo(CENTER_VECTOR) > 2.5
+		const collides = positionVector.distanceTo(CENTER_VECTOR) > 2
 
 
 		velocityX.set(currentVelocityX * (collides ? -1 : 1))
@@ -80,23 +93,21 @@ const Dot = forwardRef(({ index }, ref) => {
 	})
 
 	return (
-		<group>
-			<motion.mesh
-				x={positionX}
-				y={positionY}
-				z={0}
-				ref={ref}
-			>
-				<circleGeometry args={[0.02, 32]} />
-				<lineBasicMaterial color={color} />
-			</motion.mesh>
-		</group>
+		<motion.mesh
+			x={positionX}
+			y={positionY}
+			z={0}
+			ref={ref}
+		>
+			<circleGeometry args={[0.02, 32]} />
+			<lineBasicMaterial color={color} />
+		</motion.mesh>
 	)
 })
 
 const useFrequencySetup = ({
 	stream,
-	fftSize = 256,
+	fftSize = 32,
 	smoothingTimeConstant = 0.9,
 	minDecibels = -100,
 	maxDecibels = -10,
